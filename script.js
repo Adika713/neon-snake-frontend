@@ -6,14 +6,15 @@ const nameInput = document.getElementById('player-name');
 const nameError = document.getElementById('name-error');
 let currentLeaderboard = 'easy';
 
-// Backend API URL (replace with your Render backend URL after deployment)
-const BACKEND_URL = 'https://neon-snake-backend.onrender.com'; // e.g., 'https://neon-snake-backend.onrender.com'
+// Backend API URL (replace with your Render URL, e.g., https://neon-snake-backend.onrender.com)
+const BACKEND_URL = 'https://neon-snake-backend.onrender.com'; // Update this with your Render URL
 
 // p5.js setup
 function setup() {
   createCanvas(400, 400).parent('game-canvas');
   frameRate(60);
   fetchLeaderboard();
+  fetchPlayerCount();
   console.log('Game setup complete.');
 }
 
@@ -110,43 +111,83 @@ function drawFood() {
   rect(food.x * tileSize, food.y * tileSize, tileSize, tileSize);
 }
 
-// Fetch leaderboard from backend
-async function fetchLeaderboard() {
-  try {
-    const response = await fetch(`${BACKEND_URL}/leaderboard/${currentLeaderboard}`);
-    const current = await response.json();
-    leaderboardBody.innerHTML = '';
-    if (current.length === 0) {
-      leaderboardBody.innerHTML = '<tr><td colspan="3">No scores yet!</td></tr>';
-    } else {
-      current.forEach((entry, index) => {
-        const row = `<tr><td>${index + 1}</td><td>${entry.name}</td><td>${entry.score}</td></tr>`;
-        leaderboardBody.innerHTML += row;
-      });
+// Fetch leaderboard with retry logic
+async function fetchLeaderboard(retries = 3, delay = 2000) {
+  leaderboardBody.innerHTML = '<tr><td colspan="3">Loading...</td></tr>';
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(`${BACKEND_URL}/leaderboard/${currentLeaderboard}`, { timeout: 10000 });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const current = await response.json();
+      leaderboardBody.innerHTML = '';
+      if (current.length === 0) {
+        leaderboardBody.innerHTML = '<tr><td colspan="3">No scores yet!</td></tr>';
+      } else {
+        current.forEach((entry, index) => {
+          const row = `<tr><td>${index + 1}</td><td>${entry.name}</td><td>${entry.score}</td></tr>`;
+          leaderboardBody.innerHTML += row;
+        });
+      }
+      console.log(`Fetched ${currentLeaderboard} leaderboard`);
+      return;
+    } catch (error) {
+      console.error(`Attempt ${attempt} failed to fetch leaderboard:`, error);
+      if (attempt === retries) {
+        leaderboardBody.innerHTML = '<tr><td colspan="3">Error loading leaderboard</td></tr>';
+      } else {
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
-  } catch (error) {
-    console.error('Error fetching leaderboard:', error);
-    leaderboardBody.innerHTML = '<tr><td colspan="3">Error loading leaderboard</td></tr>';
   }
 }
 
-// Update leaderboard via backend
-async function updateLeaderboard() {
-  if (!playerName) return;
-  try {
-    const response = await fetch(`${BACKEND_URL}/leaderboard`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: playerName, score, difficulty })
-    });
-    if (response.ok) {
-      console.log(`Leaderboard (${difficulty}) updated: ${playerName} scored ${score}`);
-      fetchLeaderboard();
-    } else {
-      console.error('Failed to update leaderboard:', response.status);
+// Fetch player count with retry logic
+async function fetchPlayerCount(retries = 3, delay = 2000) {
+  const playerCountDiv = document.getElementById('player-count');
+  playerCountDiv.innerText = 'Total Players: Loading...';
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(`${BACKEND_URL}/player-count`, { timeout: 10000 });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data = await response.json();
+      playerCountDiv.innerText = `Total Players: ${data.count}`;
+      console.log(`Fetched player count: ${data.count}`);
+      return;
+    } catch (error) {
+      console.error(`Attempt ${attempt} failed to fetch player count:`, error);
+      if (attempt === retries) {
+        playerCountDiv.innerText = 'Total Players: Error';
+      } else {
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
-  } catch (error) {
-    console.error('Error updating leaderboard:', error);
+  }
+}
+
+// Update leaderboard with retry logic
+async function updateLeaderboard(retries = 3, delay = 2000) {
+  if (!playerName) return;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(`${BACKEND_URL}/leaderboard`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: playerName, score, difficulty }),
+        timeout: 10000
+      });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      console.log(`Leaderboard (${difficulty}) updated: ${playerName} scored ${score}`);
+      await fetchLeaderboard();
+      await fetchPlayerCount(); // Update player count after new score
+      return;
+    } catch (error) {
+      console.error(`Attempt ${attempt} failed to update leaderboard:`, error);
+      if (attempt === retries) {
+        console.error('Max retries reached for updating leaderboard');
+      } else {
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
   }
 }
 
@@ -205,6 +246,7 @@ Object.keys(leaderboardButtons).forEach(key => {
     Object.values(leaderboardButtons).forEach(btn => btn.classList.remove('active'));
     leaderboardButtons[key].classList.add('active');
     fetchLeaderboard();
+    fetchPlayerCount(); // Ensure player count is updated
     console.log(`Switched to ${key} leaderboard`);
   });
 });
