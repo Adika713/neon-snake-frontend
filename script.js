@@ -7,7 +7,7 @@ const nameError = document.getElementById('name-error');
 let currentLeaderboard = 'easy';
 
 // Backend API URL (replace with your Render URL, e.g., https://neon-snake-backend.onrender.com)
-const BACKEND_URL = 'YOUR_RENDER_BACKEND_URL'; // Update this with your Render URL
+const BACKEND_URL = 'https://neon-snake-backend.onrender.com'; // Update this with your Render URL
 
 // p5.js setup
 function setup() {
